@@ -1,0 +1,61 @@
+send_command:
+  name: Send Command
+  description: >-
+    Send a stored command (by name) or a raw TCP command string to a
+    Global Caché device.
+  fields:
+    device_id:
+      name: Device ID
+      description: The config-entry ID or UUID of the target device.
+      required: true
+      selector:
+        text:
+    command_name:
+      name: Command Name
+      description: >-
+        Friendly name of a command stored in the device's options.
+        Mutually exclusive with raw_command.
+      selector:
+        text:
+    raw_command:
+      name: Raw Command
+      description: >-
+        A raw TCP command string to send directly (e.g.
+        "sendir,1:1,1,38000,1,1,347,173,...").  Mutually exclusive with
+        command_name.
+      selector:
+        text:
+
+send_ir:
+  name: Send IR
+  description: Send an IR command string to a Global Caché device.
+  fields:
+    device_id:
+      name: Device ID
+      description: The config-entry ID or UUID of the target device.
+      required: true
+      selector:
+        text:
+    command:
+      name: IR Command
+      description: >-
+        Full sendir command string
+        (e.g. "sendir,1:1,1,38000,1,1,347,173,22,…").
+      required: true
+      selector:
+        text:
+
+learn_ir:
+  name: Learn IR
+  description: >-
+    Activate the IR-learner on a Global Caché device.  The device enters
+    learning mode; point a remote at it and press a button.  The initial
+    acknowledgement is logged.  Use the device's web UI or monitor logs
+    for the captured code.
+  fields:
+    device_id:
+      name: Device ID
+      description: The config-entry ID or UUID of the target device.
+      required: true
+      selector:
+        text:

@@ -1,0 +1,185 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cachix – Global Caché Setup",
+        "description": "Choose how to add your Global Caché device.",
+        "menu_options": {
+          "discover": "Discover devices on the network",
+          "manual": "Enter device IP address manually"
+        }
+      },
+      "discover": {
+        "title": "Discovered Devices",
+        "description": "Select a Global Caché device found on your network.",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "manual": {
+        "title": "Manual Configuration",
+        "description": "Enter the IP address and port of your Global Caché device.",
+        "data": {
+          "host": "Host / IP Address",
+          "port": "TCP Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the device. Verify the IP address and that the device is powered on.",
+      "unknown": "An unexpected error occurred. Check the Home Assistant logs for details.",
+      "no_devices_found": "No Global Caché devices were found on your network. Try manual entry instead.",
+      "invalid_host": "The host address is not valid."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cachix – Command Manager",
+        "description": "Manage commands and settings for this Global Caché device.",
+        "menu_options": {
+          "add_command": "Add a new command",
+          "edit_command": "Edit an existing command",
+          "remove_command": "Remove a command",
+          "settings": "General settings"
+        }
+      },
+      "add_command": {
+        "title": "What type of command?",
+        "description": "Choose the command type. You'll get a form tailored for that type next.",
+        "data": {
+          "command_type": "Command Type"
+        }
+      },
+      "add_ir": {
+        "title": "Add IR Command",
+        "description": "Fill in the fields below. You only need to paste the IR pulse data — the integration builds the full TCP command for you automatically.",
+        "data": {
+          "name": "Command Name (e.g. TV Power, Volume Up)",
+          "module_port": "IR Port (e.g. 1:1, 1:2, 1:3)",
+          "frequency": "Carrier Frequency (Hz)",
+          "repeat": "Repeat Count (how many times to send)",
+          "ir_code": "IR Code (pulse pairs — e.g. 347,173,22,22,22,65,…)",
+          "icon": "Icon (optional)",
+          "description": "Description (optional)"
+        }
+      },
+      "add_relay": {
+        "title": "Add Relay Command",
+        "description": "Control a relay port on the device.",
+        "data": {
+          "name": "Command Name (e.g. Garage Door, Screen Down)",
+          "module_port": "Relay Port (e.g. 1:1)",
+          "relay_action": "Action",
+          "icon": "Icon (optional)",
+          "description": "Description (optional)"
+        }
+      },
+      "add_serial": {
+        "title": "Add Serial Command",
+        "description": "Send data through an RS-232 serial port.",
+        "data": {
+          "name": "Command Name (e.g. Projector On)",
+          "module_port": "Serial Port (e.g. 1:1)",
+          "serial_data": "Data to Send",
+          "icon": "Icon (optional)",
+          "description": "Description (optional)"
+        }
+      },
+      "add_raw": {
+        "title": "Add Raw TCP Command",
+        "description": "For advanced users. Type the exact TCP command string to send to the device.",
+        "data": {
+          "name": "Command Name",
+          "command": "TCP Command String",
+          "icon": "Icon (optional)",
+          "description": "Description (optional)"
+        }
+      },
+      "edit_command": {
+        "title": "Edit Command",
+        "description": "Select the command you want to edit.",
+        "data": {
+          "command_select": "Command"
+        }
+      },
+      "edit_ir": {
+        "title": "Edit IR Command",
+        "description": "Modify the IR command parameters below.",
+        "data": {
+          "name": "Command Name",
+          "module_port": "IR Port (e.g. 1:1)",
+          "frequency": "Carrier Frequency (Hz)",
+          "repeat": "Repeat Count",
+          "ir_code": "IR Code (pulse pairs)",
+          "icon": "Icon",
+          "description": "Description (optional)"
+        }
+      },
+      "edit_relay": {
+        "title": "Edit Relay Command",
+        "description": "Modify the relay command parameters below.",
+        "data": {
+          "name": "Command Name",
+          "module_port": "Relay Port",
+          "relay_action": "Action",
+          "icon": "Icon",
+          "description": "Description (optional)"
+        }
+      },
+      "edit_serial": {
+        "title": "Edit Serial Command",
+        "description": "Modify the serial command parameters below.",
+        "data": {
+          "name": "Command Name",
+          "module_port": "Serial Port",
+          "serial_data": "Data to Send",
+          "icon": "Icon",
+          "description": "Description (optional)"
+        }
+      },
+      "edit_raw": {
+        "title": "Edit Raw TCP Command",
+        "description": "Modify the raw TCP command below.",
+        "data": {
+          "name": "Command Name",
+          "command": "TCP Command String",
+          "icon": "Icon",
+          "description": "Description (optional)"
+        }
+      },
+      "remove_command": {
+        "title": "Remove Command",
+        "description": "Select the command to remove. The associated button entity will be deleted.",
+        "data": {
+          "command_select": "Command"
+        }
+      },
+      "settings": {
+        "title": "General Settings",
+        "description": "Configure polling interval and connection parameters.",
+        "data": {
+          "scan_interval": "Status polling interval (seconds)"
+        }
+      }
+    },
+    "abort": {
+      "no_commands": "No commands have been configured yet. Add one first.",
+      "command_not_found": "The selected command could not be found."
+    }
+  },
+  "exceptions": {
+    "device_not_found": {
+      "message": "No Cachix device found for the given ID."
+    },
+    "command_not_found": {
+      "message": "The named command does not exist on this device."
+    },
+    "missing_command": {
+      "message": "Provide either 'command_name' or 'raw_command'."
+    }
+  }
+}
