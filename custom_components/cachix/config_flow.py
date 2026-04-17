@@ -128,16 +128,33 @@ class CachixConfigFlow(ConfigFlow, domain=DOMAIN):
             selected_uuid = user_input.get("device", "")
             dev = self._discovered_devices.get(selected_uuid)
             if dev:
-                result = await self._async_validate_and_create(
-                    host=dev["host"],
-                    port=DEFAULT_PORT,
-                    device_uuid=selected_uuid,
-                    model=dev.get("model", "Global Caché"),
-                )
-                if isinstance(result, dict):
-                    errors = result
+                host = dev["host"]
+                model = dev.get("model", "Global Caché")
+                try:
+                    version = await self._async_validate_connection(host, DEFAULT_PORT)
+                except ConnectionFailed:
+                    errors["base"] = "cannot_connect"
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception("Unexpected error validating %s", host)
+                    errors["base"] = "unknown"
                 else:
-                    return result  # ConfigFlowResult (entry created)
+                    await self.async_set_unique_id(selected_uuid)
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=model,
+                        data={
+                            CONF_HOST: host,
+                            CONF_PORT: DEFAULT_PORT,
+                            CONF_UUID: selected_uuid,
+                            CONF_MODEL: model,
+                            CONF_NAME: model,
+                            CONF_FIRMWARE: version,
+                        },
+                        options={
+                            CONF_COMMANDS: [],
+                            CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                        },
+                    )
         else:
             # First visit → run discovery
             discovery = GlobalCacheDiscovery()
@@ -187,18 +204,35 @@ class CachixConfigFlow(ConfigFlow, domain=DOMAIN):
             port = int(user_input.get(CONF_PORT, DEFAULT_PORT))
 
             if not host:
-                errors["base"] = "invalid_host"
+                errors[CONF_HOST] = "invalid_host"
             else:
-                result = await self._async_validate_and_create(
-                    host=host,
-                    port=port,
-                    device_uuid=None,
-                    model=None,
-                )
-                if isinstance(result, dict):
-                    errors = result
+                try:
+                    version = await self._async_validate_connection(host, port)
+                except ConnectionFailed:
+                    errors["base"] = "cannot_connect"
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception("Unexpected error validating %s:%s", host, port)
+                    errors["base"] = "unknown"
                 else:
-                    return result
+                    device_uuid = f"cachix_{host.replace('.', '_')}"
+                    await self.async_set_unique_id(device_uuid)
+                    self._abort_if_unique_id_configured()
+                    name = f"Global Caché ({host})"
+                    return self.async_create_entry(
+                        title=name,
+                        data={
+                            CONF_HOST: host,
+                            CONF_PORT: port,
+                            CONF_UUID: device_uuid,
+                            CONF_MODEL: "Global Caché",
+                            CONF_NAME: name,
+                            CONF_FIRMWARE: version,
+                        },
+                        options={
+                            CONF_COMMANDS: [],
+                            CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                        },
+                    )
 
         return self.async_show_form(
             step_id="manual",
@@ -219,59 +253,23 @@ class CachixConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    # ── Internal: validate + create ──────────────────────────────────────
+    # ── Internal: validate connection ────────────────────────────────────
 
-    async def _async_validate_and_create(
-        self,
-        host: str,
-        port: int,
-        device_uuid: str | None,
-        model: str | None,
-    ) -> ConfigFlowResult | dict[str, str]:
-        """Connect, fetch version, and create a config entry.
+    async def _async_validate_connection(self, host: str, port: int) -> str:
+        """Connect and return the firmware version string.
 
-        Returns a ``ConfigFlowResult`` on success or an *errors dict* on failure.
+        Raises ``ConnectionFailed`` (or another exception) on failure so
+        callers can use a clean try/except/else pattern.
         """
         client = GlobalCacheClient(host, port)
-        version: str = ""
         try:
             await client.connect()
-            version = await client.get_version()
-        except ConnectionFailed:
-            return {"base": "cannot_connect"}
-        except Exception:
-            _LOGGER.exception("Unexpected error validating %s:%s", host, port)
-            return {"base": "unknown"}
+            return await client.get_version()
         finally:
             try:
                 await client.disconnect()
             except Exception:  # noqa: BLE001
                 pass
-
-        # Unique ID
-        if not device_uuid:
-            device_uuid = f"cachix_{host.replace('.', '_')}"
-
-        await self.async_set_unique_id(device_uuid)
-        self._abort_if_unique_id_configured()
-
-        name = model or f"Global Caché ({host})"
-
-        return self.async_create_entry(
-            title=name,
-            data={
-                CONF_HOST: host,
-                CONF_PORT: port,
-                CONF_UUID: device_uuid,
-                CONF_MODEL: model or "Global Caché",
-                CONF_NAME: name,
-                CONF_FIRMWARE: version,
-            },
-            options={
-                CONF_COMMANDS: [],
-                CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
-            },
-        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
