@@ -49,6 +49,7 @@ from .coordinator import CachixCoordinator
 from .entity import CachixEntity
 
 _LOGGER = logging.getLogger(__name__)
+_PRONTO_FREQ_CONSTANT = 4145146
 
 # ── IR ID counter shared across all buttons ──────────────────────────────────
 _ir_id_counter: int = 0
@@ -64,6 +65,26 @@ def _next_ir_id() -> int:
 def _split_ir_tokens(value: str) -> list[str]:
     """Split IR values that may be comma-separated, space-separated, or mixed."""
     return [token for token in re.split(r"[\s,]+", value.strip()) if token]
+
+
+def _looks_like_pronto_hex(tokens: list[str]) -> bool:
+    """Return True when *tokens* look like a raw Pronto Hex sequence."""
+    if len(tokens) < 6:
+        return False
+    if not all(re.fullmatch(r"[0-9A-Fa-f]{4}", token) for token in tokens):
+        return False
+    return tokens[0].lower() in {"0000", "0100"}
+
+
+def _parse_numeric_token(token: str, *, force_hex: bool = False) -> int:
+    """Parse a numeric token that may be decimal or hex."""
+    value = token.strip()
+    is_hex = (
+        force_hex
+        or value.lower().startswith("0x")
+        or bool(re.search(r"[A-Fa-f]", value))
+    )
+    return int(value, 16 if is_hex else 10)
 
 
 async def async_setup_entry(
@@ -111,51 +132,83 @@ class CachixCommandButton(CachixEntity, ButtonEntity):
         """Assemble a ``sendir`` string from the stored IR fields.
 
         The Global Caché sendir format is:
-        sendir,<module>:<port>,<id>,<frequency>,<repeat>,<offset>,<count>,<pulse1>,<pulse2>,...
+        sendir,<module>:<port>,<id>,<frequency>,<repeat>,<offset>,<pulse1>,<pulse2>,...
 
         If the user enters a full sendir command, normalize delimiters and use it.
-        Otherwise, parse the IR code values and add the count automatically.
+        Otherwise, parse the IR code values and build a valid sendir payload.
         """
         ir_code = self._cmd.get(CMD_KEY_IR_CODE, "").strip()
         if not ir_code:
             raise ValueError("No IR code provided")
+        cid = _next_ir_id()
+        repeat = int(self._cmd.get(CMD_KEY_REPEAT, DEFAULT_IR_REPEAT))
 
         # If the user stored a full sendir string, normalize delimiters.
         if ir_code.lower().startswith("sendir"):
             parts = _split_ir_tokens(ir_code)
-            if len(parts) < 8:
+            if len(parts) < 7:
                 raise ValueError(
-                    "Invalid sendir format. Expected at least 8 values: "
-                    "sendir,<module>:<port>,<id>,<frequency>,<repeat>,<offset>,<count>,<pulse...>"
+                    "Invalid sendir format. Expected at least 7 values: "
+                    "sendir,<module>:<port>,<id>,<frequency>,<repeat>,<offset>,<pulse...>"
                 )
             return ",".join(parts)
 
-        # Accept comma-separated, space-separated, or mixed pulse input.
-        pulses = _split_ir_tokens(ir_code)
+        tokens = _split_ir_tokens(ir_code)
 
-        # Convert to integers to validate
+        # Pronto Hex support (e.g. "0000 0071 0000 009A ...").
+        if _looks_like_pronto_hex(tokens):
+            pronto = [_parse_numeric_token(token, force_hex=True) for token in tokens]
+            code_type, pronto_freq, intro_pairs, repeat_pairs = pronto[:4]
+            if code_type != 0:
+                raise ValueError(
+                    "Unsupported Pronto code type. Only raw (0000) Pronto Hex is supported."
+                )
+
+            total_pairs = intro_pairs + repeat_pairs
+            expected_words = 4 + (total_pairs * 2)
+            if len(pronto) < expected_words:
+                raise ValueError(
+                    "Incomplete Pronto code: expected "
+                    f"{expected_words} words but got {len(pronto)}"
+                )
+
+            pulse_nums = pronto[4:expected_words]
+            if not pulse_nums:
+                raise ValueError("Pronto code does not include pulse data")
+
+            # Derive carrier frequency from the Pronto header.
+            freq = (
+                round(_PRONTO_FREQ_CONSTANT / pronto_freq)
+                if pronto_freq > 0
+                else int(self._cmd.get(CMD_KEY_FREQUENCY, DEFAULT_IR_FREQUENCY))
+            )
+            offset = intro_pairs + 1 if intro_pairs > 0 else 1
+
+            if len(pulse_nums) % 2 != 0:
+                pulse_nums.append(1000)
+
+            pulse_str = ",".join(str(p) for p in pulse_nums)
+            return f"sendir,{self._module_port},{cid},{freq},{repeat},{offset},{pulse_str}"
+
+        # Accept comma-separated, space-separated, or mixed pulse input.
         try:
-            pulse_nums = [int(p) for p in pulses]
+            pulse_nums = [_parse_numeric_token(token) for token in tokens]
         except ValueError as e:
             raise ValueError(
-                f"Invalid IR code format - all values must be numbers: {ir_code}"
+                "Invalid IR code format - all values must be decimal or hex numbers: "
+                f"{ir_code}"
             ) from e
 
-        # The count is the number of pulse pairs (each pair is on/off time)
-        # If we have an odd number, it might be missing the final off pulse
-        count = len(pulse_nums)
-        if count % 2 != 0:
+        # If we have an odd number of pulse values, add a final off pulse.
+        if len(pulse_nums) % 2 != 0:
             # Add a default off pulse if odd number of pulses
             pulse_nums.append(1000)  # 1ms default off time
-            count += 1
 
         freq = self._cmd.get(CMD_KEY_FREQUENCY, DEFAULT_IR_FREQUENCY)
-        repeat = self._cmd.get(CMD_KEY_REPEAT, DEFAULT_IR_REPEAT)
-        cid = _next_ir_id()
 
-        # Format: sendir,<port>,<id>,<freq>,<repeat>,1,<count>,<pulse1>,<pulse2>,...
+        # Format: sendir,<port>,<id>,<freq>,<repeat>,1,<pulse1>,<pulse2>,...
         pulse_str = ",".join(str(p) for p in pulse_nums)
-        return f"sendir,{self._module_port},{cid},{freq},{repeat},1,{count},{pulse_str}"
+        return f"sendir,{self._module_port},{cid},{freq},{repeat},1,{pulse_str}"
 
     def _build_relay_command(self) -> str:
         """Build the ``setstate`` string for the stored relay action."""
@@ -178,6 +231,7 @@ class CachixCommandButton(CachixEntity, ButtonEntity):
         """Handle the button press – build and send the command."""
         client: GlobalCacheClient = self.coordinator.client
         host = self._entry.data.get("host", "?")
+        cmd_str = ""
         _LOGGER.info(
             "Sending %s command '%s' → %s",
             self._cmd_type,
@@ -212,6 +266,9 @@ class CachixCommandButton(CachixEntity, ButtonEntity):
             _LOGGER.debug("Command '%s' response: %s", self._cmd_name, response)
         except Exception:
             _LOGGER.error(
-                "Failed to send command '%s'", self._cmd_name, exc_info=True
+                "Failed to send command '%s' (payload preview: %s)",
+                self._cmd_name,
+                cmd_str[:200],
+                exc_info=True,
             )
             raise
