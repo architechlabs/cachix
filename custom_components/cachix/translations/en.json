@@ -62,7 +62,7 @@
           "module_port": "IR Port (e.g. 1:1, 1:2, 1:3)",
           "frequency": "Carrier Frequency (Hz)",
           "repeat": "Repeat Count (how many times to send)",
-          "ir_code": "IR Code (comma-separated pulse pairs — e.g. 347,173,22,22,22,65,…)",
+          "ir_code": "IR Code (comma or space separated pulses, e.g. 347,173,22,22 or 347 173 22 22)",
           "icon": "Icon (optional)",
           "description": "Description (optional)"
         }
@@ -114,7 +114,7 @@
           "module_port": "IR Port (e.g. 1:1)",
           "frequency": "Carrier Frequency (Hz)",
           "repeat": "Repeat Count",
-          "ir_code": "IR Code (pulse pairs)",
+          "ir_code": "IR Code (comma or space separated pulses)",
           "icon": "Icon",
           "description": "Description (optional)"
         }

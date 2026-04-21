@@ -10,6 +10,7 @@ Raw commands are sent verbatim.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
@@ -60,6 +61,11 @@ def _next_ir_id() -> int:
     return _ir_id_counter
 
 
+def _split_ir_tokens(value: str) -> list[str]:
+    """Split IR values that may be comma-separated, space-separated, or mixed."""
+    return [token for token in re.split(r"[\s,]+", value.strip()) if token]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -107,26 +113,33 @@ class CachixCommandButton(CachixEntity, ButtonEntity):
         The Global Caché sendir format is:
         sendir,<module>:<port>,<id>,<frequency>,<repeat>,<offset>,<count>,<pulse1>,<pulse2>,...
 
-        If the user enters a full sendir command, use it as-is.
-        Otherwise, parse the IR code as comma-separated pulse pairs and add the count.
+        If the user enters a full sendir command, normalize delimiters and use it.
+        Otherwise, parse the IR code values and add the count automatically.
         """
         ir_code = self._cmd.get(CMD_KEY_IR_CODE, "").strip()
-        # If the user stored a full sendir string, use it as-is.
-        if ir_code.lower().startswith("sendir"):
-            return ir_code
-
-        # Parse the IR code as comma-separated values
         if not ir_code:
             raise ValueError("No IR code provided")
 
-        # Split by comma and clean up whitespace
-        pulses = [p.strip() for p in ir_code.split(",") if p.strip()]
+        # If the user stored a full sendir string, normalize delimiters.
+        if ir_code.lower().startswith("sendir"):
+            parts = _split_ir_tokens(ir_code)
+            if len(parts) < 8:
+                raise ValueError(
+                    "Invalid sendir format. Expected at least 8 values: "
+                    "sendir,<module>:<port>,<id>,<frequency>,<repeat>,<offset>,<count>,<pulse...>"
+                )
+            return ",".join(parts)
+
+        # Accept comma-separated, space-separated, or mixed pulse input.
+        pulses = _split_ir_tokens(ir_code)
 
         # Convert to integers to validate
         try:
             pulse_nums = [int(p) for p in pulses]
         except ValueError as e:
-            raise ValueError(f"Invalid IR code format - all values must be numbers: {ir_code}") from e
+            raise ValueError(
+                f"Invalid IR code format - all values must be numbers: {ir_code}"
+            ) from e
 
         # The count is the number of pulse pairs (each pair is on/off time)
         # If we have an odd number, it might be missing the final off pulse
