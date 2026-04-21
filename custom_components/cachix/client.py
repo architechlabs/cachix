@@ -282,7 +282,27 @@ class GlobalCacheClient:
         """Send an IR command (prepends ``sendir,`` if missing)."""
         if not command.lower().startswith("sendir"):
             command = f"sendir,{command}"
-        return await self.send_command(command, timeout=IR_SEND_TIMEOUT)
+        try:
+            return await self.send_command(command, timeout=IR_SEND_TIMEOUT)
+        except CommandError as e:
+            # Log additional context for debugging Control4 issues
+            if "008" in str(e):
+                _LOGGER.warning(
+                    "Invalid pulse data error (ERR_1:1,008) for command: %s. "
+                    "This may indicate the device is controlled by Control4 or "
+                    "the IR code format is incorrect. Check that IR codes are "
+                    "comma-separated pulse pairs (e.g. '347,173,22,22,22,65').",
+                    command
+                )
+            elif "023" in str(e):
+                _LOGGER.warning(
+                    "Settings locked error (ERR_023) for command: %s. "
+                    "This device appears to be locked, possibly by Control4. "
+                    "You may need to unlock the device or configure Control4 "
+                    "to allow external access.",
+                    command
+                )
+            raise
 
     async def stop_ir(self, module_port: str) -> str:
         """Abort an in-progress IR transmission."""
@@ -304,6 +324,21 @@ class GlobalCacheClient:
         """Read buffered serial data from a port."""
         return await self.send_command(f"get_SERIAL,{module_port}")
 
-    async def send_raw(self, command: str) -> str:
-        """Send a raw TCP command string as-is."""
-        return await self.send_command(command)
+    async def get_lock_status(self) -> str:
+        """Check if the device is locked (Control4 compatibility)."""
+        try:
+            return await self.send_command("getlock")
+        except CommandError:
+            # getlock may not be supported on all devices
+            return "unknown"
+
+    async def unlock_device(self, password: str = "") -> str:
+        """Attempt to unlock the device (if supported)."""
+        try:
+            if password:
+                return await self.send_command(f"unlock,{password}")
+            else:
+                return await self.send_command("unlock")
+        except CommandError as e:
+            _LOGGER.warning("Failed to unlock device: %s", e)
+            raise

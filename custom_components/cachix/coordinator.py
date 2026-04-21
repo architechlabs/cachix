@@ -90,6 +90,20 @@ class CachixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             version = await self.client.get_version()
             self._version = version
 
+            # Check lock status (Control4 compatibility)
+            try:
+                lock_status = await self.client.get_lock_status()
+                if lock_status and lock_status.lower() in ("locked", "1"):
+                    _LOGGER.warning(
+                        "Global Caché device at %s appears to be locked. "
+                        "This may indicate Control4 control or security settings. "
+                        "IR commands may fail with 'Settings are locked' errors.",
+                        self.entry.data[CONF_HOST]
+                    )
+            except Exception:  # noqa: BLE001
+                # getlock may not be supported on all devices
+                pass
+
             # Module listing
             modules = await self.client.get_devices()
             self._modules = modules

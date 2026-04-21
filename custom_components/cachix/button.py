@@ -102,15 +102,47 @@ class CachixCommandButton(CachixEntity, ButtonEntity):
     # ── Command builders (from structured fields) ────────────────────────
 
     def _build_ir_command(self) -> str:
-        """Assemble a ``sendir`` string from the stored IR fields."""
-        ir_code = self._cmd.get(CMD_KEY_IR_CODE, "")
+        """Assemble a ``sendir`` string from the stored IR fields.
+
+        The Global Caché sendir format is:
+        sendir,<module>:<port>,<id>,<frequency>,<repeat>,<offset>,<count>,<pulse1>,<pulse2>,...
+
+        If the user enters a full sendir command, use it as-is.
+        Otherwise, parse the IR code as comma-separated pulse pairs and add the count.
+        """
+        ir_code = self._cmd.get(CMD_KEY_IR_CODE, "").strip()
         # If the user stored a full sendir string, use it as-is.
         if ir_code.lower().startswith("sendir"):
             return ir_code
+
+        # Parse the IR code as comma-separated values
+        if not ir_code:
+            raise ValueError("No IR code provided")
+
+        # Split by comma and clean up whitespace
+        pulses = [p.strip() for p in ir_code.split(",") if p.strip()]
+
+        # Convert to integers to validate
+        try:
+            pulse_nums = [int(p) for p in pulses]
+        except ValueError as e:
+            raise ValueError(f"Invalid IR code format - all values must be numbers: {ir_code}") from e
+
+        # The count is the number of pulse pairs (each pair is on/off time)
+        # If we have an odd number, it might be missing the final off pulse
+        count = len(pulse_nums)
+        if count % 2 != 0:
+            # Add a default off pulse if odd number of pulses
+            pulse_nums.append(1000)  # 1ms default off time
+            count += 1
+
         freq = self._cmd.get(CMD_KEY_FREQUENCY, DEFAULT_IR_FREQUENCY)
         repeat = self._cmd.get(CMD_KEY_REPEAT, DEFAULT_IR_REPEAT)
         cid = _next_ir_id()
-        return f"sendir,{self._module_port},{cid},{freq},{repeat},1,{ir_code}"
+
+        # Format: sendir,<port>,<id>,<freq>,<repeat>,1,<count>,<pulse1>,<pulse2>,...
+        pulse_str = ",".join(str(p) for p in pulse_nums)
+        return f"sendir,{self._module_port},{cid},{freq},{repeat},1,{count},{pulse_str}"
 
     def _build_relay_command(self) -> str:
         """Build the ``setstate`` string for the stored relay action."""
